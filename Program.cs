@@ -34,8 +34,10 @@ namespace FGrep
       public Program()
       {
          Truncate = none<string>();
-         Exclude = string.Empty;
          Include = string.Empty;
+         IncludeExt = string.Empty;
+         Exclude = string.Empty;
+         ExcludeExt = string.Empty;
          File = none<FileName>();
          Folder = none<FolderName>();
          Replacement = string.Empty;
@@ -169,14 +171,24 @@ namespace FGrep
 
          if (Include.IsNotEmpty())
          {
-            WriteLine($"include << {Include} >>");
+            WriteLine($"include {Include.Guillemetify()}");
             includes = f => f.NameExtension.IsMatch(Include);
+         }
+         else if (IncludeExt.IsNotEmpty())
+         {
+            WriteLine($"include extension {IncludeExt.Guillemetify()}");
+            includes = f => f.Extension.EndsWith(IncludeExt);
          }
 
          if (Exclude.IsNotEmpty())
          {
-            WriteLine($"exclude << {Exclude} >>");
+            WriteLine($"exclude {Exclude.Guillemetify()}");
             excludes = f => f.NameExtension.IsMatch(Exclude);
+         }
+         else if (ExcludeExt.IsEmpty())
+         {
+            WriteLine($"exclude extension {ExcludeExt.Guillemetify()}");
+            excludes = f => f.Extension.EndsWith(ExcludeExt);
          }
 
          fileCount = 0;
@@ -287,7 +299,11 @@ namespace FGrep
 
       public string Include { get; set; }
 
+      public string IncludeExt { get; set; }
+
       public string Exclude { get; set; }
+
+      public string ExcludeExt { get; set; }
 
       public bool Stopwatch { get; set; }
 

@@ -31,6 +31,10 @@ namespace FGrep
             {
                doesInclude = incF => incF.NameExtension.IsMatch(program.Include, options);
             }
+            else if (program.IncludeExt.IsNotEmpty())
+            {
+               doesInclude = incF => incF.Extension.EndsWith(program.IncludeExt);
+            }
             else
             {
                doesInclude = incF => true;
@@ -40,12 +44,16 @@ namespace FGrep
             {
                doesExclude = excF => !excF.NameExtension.IsMatch(program.Exclude, options);
             }
+            else if (program.ExcludeExt.IsNotEmpty())
+            {
+               doesExclude = excF => !excF.Extension.EndsWith(program.ExcludeExt);
+            }
             else
             {
                doesExclude = excF => false;
             }
 
-            Func<FileName, bool> including = includingF => doesInclude(includingF) && doesExclude(includingF);
+            bool including(FileName includingF) => doesInclude(includingF) && doesExclude(includingF);
 
             return new MultiFinder(f, pattern, options, multiThreaded, including);
          });
