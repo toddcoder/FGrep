@@ -46,6 +46,7 @@ namespace FGrep
          Unless = none<string>();
          Color = none<string>();
          Friendly = true;
+         OutputFile = none<FileName>();
       }
 
       protected bool IsMatch(string input, string pattern) => input.IsMatch(pattern, IgnoreCase, Multiline, Friendly);
@@ -78,8 +79,6 @@ namespace FGrep
             displayHelp();
             return;
          }
-
-         assert(() => Pattern).Must().Not.BeNullOrEmpty().OrThrow();
 
          _stopwatch = maybe(Verbose || Stopwatch, () => new Stopwatch());
          _stopwatch.IfThen(s => s.Start());
@@ -264,8 +263,6 @@ namespace FGrep
       protected void replaceAction()
       {
          assert(() => Replacement).Must().Not.BeNullOrEmpty().OrThrow();
-         assert(() => File).Must().HaveValue().OrThrow();
-         assert(() => File).Must().Value.Must().Exist().OrThrow();
 
          replaceText();
       }
@@ -329,6 +326,8 @@ namespace FGrep
       public IMaybe<string> Color { get; set; }
 
       public bool Friendly { get; set; }
+
+      public IMaybe<FileName> OutputFile { get; set; }
 
       protected static void displayHelp()
       {
@@ -535,47 +534,79 @@ namespace FGrep
 
       protected void replaceText()
       {
+         var fixedReplacement = Replacement.Replace("//", "~double");
+         fixedReplacement = fixedReplacement.Replace("/", "$");
+         fixedReplacement = fixedReplacement.Replace("~double", "/");
+
          if (File.If(out var file))
          {
+            assert(() => file).Must().Exist().OrThrow();
+
             if (Backup)
             {
                var backupFile = FileName.UniqueFileName(file.Folder, file);
                file.CopyTo(backupFile, true);
             }
 
-            var tempFile = FolderName.Temp + $"{uniqueID()}.{file.Extension}";
-
-            var newLines = new List<string>();
-
-            if (Delete)
+            if (OutputFile.If(out var outputFile))
             {
-               foreach (var line in file.Lines)
+               var tempFile = FolderName.Temp + $"{uniqueID()}.{file.Extension}";
+
+               var newLines = new List<string>();
+
+               if (Delete)
                {
-                  if (!IsMatch(line))
+                  foreach (var line in file.Lines)
                   {
-                     newLines.Add(line);
+                     if (!IsMatch(line))
+                     {
+                        newLines.Add(line);
+                     }
                   }
                }
+               else
+               {
+                  foreach (var line in file.Lines.Where(IsMatch))
+                  {
+                     var replacement = line.Substitute(Pattern, fixedReplacement, IgnoreCase, Multiline, Friendly);
+                     newLines.Add(replacement);
+                  }
+               }
+
+               tempFile.SetText(newLines.ToString("\r\n"), file.Encoding);
+
+               tempFile.CopyTo(outputFile, true);
+               tempFile.Delete();
             }
             else
             {
-               foreach (var line in file.Lines)
+               foreach (var line in file.Lines.Where(IsMatch))
                {
-                  var replacement = line.Substitute(Pattern, Replacement, IgnoreCase, Multiline, Friendly);
-                  newLines.Add(line != replacement ? replacement : line);
+                  var replacement = line.Substitute(Pattern, fixedReplacement, IgnoreCase, Multiline, Friendly);
+                  WriteLine(replacement);
                }
             }
+         }
+         else
+         {
+            while (true)
+            {
+               var line = ReadLine();
+               if (line == null)
+               {
+                  break;
+               }
 
-            tempFile.SetText(newLines.ToString("\r\n"), file.Encoding);
-
-            tempFile.CopyTo(file, true);
-            tempFile.Delete();
+               var replacement = line.Substitute(Pattern, fixedReplacement, IgnoreCase, Multiline, Friendly);
+               WriteLine(replacement);
+            }
          }
       }
 
       protected static IMaybe<string> substitute(string line, string pattern, string replacement, bool ignoreCase, bool multiline, bool friendly)
       {
-         return maybe(line.IsMatch(pattern, ignoreCase, multiline, friendly), () => line.Substitute(pattern, replacement, ignoreCase, multiline, friendly));
+         return maybe(line.IsMatch(pattern, ignoreCase, multiline, friendly),
+            () => line.Substitute(pattern, replacement, ignoreCase, multiline, friendly));
       }
 
       protected void substitute()
