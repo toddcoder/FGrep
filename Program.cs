@@ -34,8 +34,10 @@ namespace FGrep
       public Program()
       {
          Truncate = none<string>();
-         Exclude = string.Empty;
          Include = string.Empty;
+         IncludeExt = string.Empty;
+         Exclude = string.Empty;
+         ExcludeExt = string.Empty;
          File = none<FileName>();
          Folder = none<FolderName>();
          Replacement = string.Empty;
@@ -43,7 +45,13 @@ namespace FGrep
          Not = false;
          Unless = none<string>();
          Color = none<string>();
+         Friendly = true;
+         OutputFile = none<FileName>();
       }
+
+      protected bool IsMatch(string input, string pattern) => input.IsMatch(pattern, IgnoreCase, Multiline, Friendly);
+
+      protected bool IsMatch(string input) => IsMatch(input, Pattern);
 
       protected static void Main()
       {
@@ -72,12 +80,10 @@ namespace FGrep
             return;
          }
 
-         assert(() => Pattern).Must().Not.BeNullOrEmpty().OrThrow();
-
          _stopwatch = maybe(Verbose || Stopwatch, () => new Stopwatch());
          _stopwatch.IfThen(s => s.Start());
 
-         matcher = new Matcher();
+         matcher = new Matcher(Friendly);
 
          if (Find)
          {
@@ -118,7 +124,7 @@ namespace FGrep
          }
       }
 
-      private void find()
+      protected void find()
       {
          if (Folder.If(out var folder))
          {
@@ -144,7 +150,7 @@ namespace FGrep
          if (Replacement.IsNotEmpty())
          {
             var replacement = Replacement.Replace("^", "$");
-            truncFunc = line => line.Substitute(Pattern, replacement, IgnoreCase, Multiline);
+            truncFunc = line => line.Substitute(Pattern, replacement, IgnoreCase, Multiline, Friendly);
          }
          else if (Truncate.If(out var truncate))
          {
@@ -169,14 +175,24 @@ namespace FGrep
 
          if (Include.IsNotEmpty())
          {
-            WriteLine($"include << {Include} >>");
-            includes = f => f.NameExtension.IsMatch(Include);
+            WriteLine($"include {Include.Guillemetify()}");
+            includes = f => IsMatch(f.NameExtension);
+         }
+         else if (IncludeExt.IsNotEmpty())
+         {
+            WriteLine($"include extension {IncludeExt.Guillemetify()}");
+            includes = f => f.Extension.EndsWith(IncludeExt);
          }
 
          if (Exclude.IsNotEmpty())
          {
-            WriteLine($"exclude << {Exclude} >>");
-            excludes = f => f.NameExtension.IsMatch(Exclude);
+            WriteLine($"exclude {Exclude.Guillemetify()}");
+            excludes = f => IsMatch(f.NameExtension);
+         }
+         else if (ExcludeExt.IsNotEmpty())
+         {
+            WriteLine($"exclude extension {ExcludeExt.Guillemetify()}");
+            excludes = f => f.Extension.EndsWith(ExcludeExt);
          }
 
          fileCount = 0;
@@ -184,7 +200,7 @@ namespace FGrep
 
          if (AllText)
          {
-            var unless = Unless.Map(p => func<string, bool>(line => line.IsMatch(p, IgnoreCase, Multiline))).DefaultTo(() => _ => false);
+            var unless = Unless.Map(p => func<string, bool>(line => IsMatch(line, p))).DefaultTo(() => _ => false);
             matchFolderText(folder, 0, unless);
          }
          else
@@ -200,14 +216,14 @@ namespace FGrep
          Func<string, bool> matches;
          if (Not)
          {
-            matches = line => !line.IsMatch(Pattern, IgnoreCase, Multiline);
+            matches = line => !IsMatch(line);
          }
          else
          {
-            matches = line => line.IsMatch(Pattern, IgnoreCase, Multiline);
+            matches = IsMatch;
          }
 
-         var unless = Unless.Map(p => func<string, bool>(line => line.IsMatch(p, IgnoreCase, Multiline))).DefaultTo(() => _ => false);
+         var unless = Unless.Map(p => func<string, bool>(line => IsMatch(line, p))).DefaultTo(() => _ => false);
 
          foreach (var line in file.Lines.Where(line => matches(line) && !unless(line)))
          {
@@ -220,14 +236,14 @@ namespace FGrep
          Func<string, bool> matches;
          if (Not)
          {
-            matches = line => !line.IsMatch(Pattern, IgnoreCase, Multiline);
+            matches = line => !IsMatch(line);
          }
          else
          {
-            matches = line => line.IsMatch(Pattern, IgnoreCase, Multiline);
+            matches = IsMatch;
          }
 
-         var unless = Unless.Map(p => func<string, bool>(line => line.IsMatch(p, IgnoreCase, Multiline))).DefaultTo(() => _ => false);
+         var unless = Unless.Map(p => func<string, bool>(line => IsMatch(line, p))).DefaultTo(() => _ => false);
 
          while (true)
          {
@@ -247,8 +263,6 @@ namespace FGrep
       protected void replaceAction()
       {
          assert(() => Replacement).Must().Not.BeNullOrEmpty().OrThrow();
-         assert(() => File).Must().HaveValue().OrThrow();
-         assert(() => File).Must().Value.Must().Exist().OrThrow();
 
          replaceText();
       }
@@ -287,7 +301,11 @@ namespace FGrep
 
       public string Include { get; set; }
 
+      public string IncludeExt { get; set; }
+
       public string Exclude { get; set; }
+
+      public string ExcludeExt { get; set; }
 
       public bool Stopwatch { get; set; }
 
@@ -306,6 +324,10 @@ namespace FGrep
       public IMaybe<string> Unless { get; set; }
 
       public IMaybe<string> Color { get; set; }
+
+      public bool Friendly { get; set; }
+
+      public IMaybe<FileName> OutputFile { get; set; }
 
       protected static void displayHelp()
       {
@@ -358,7 +380,7 @@ namespace FGrep
 
          if (getFiles(folder).If(out var files, out var exception))
          {
-            var unless = Unless.Map(p => func<string, bool>(line => line.IsMatch(p, IgnoreCase, Multiline))).DefaultTo(() => _ => false);
+            var unless = Unless.Map(p => func<string, bool>(line => IsMatch(line, p))).DefaultTo(() => _ => false);
 
             foreach (var file in files)
             {
@@ -375,7 +397,7 @@ namespace FGrep
                   for (var i = 0; i < lines.Length; i++)
                   {
                      var line = lines[i];
-                     if (line.IsMatch(Pattern, IgnoreCase, Multiline) && !unless(line))
+                     if (IsMatch(line) && !unless(line))
                      {
                         if (!wroteName)
                         {
@@ -491,7 +513,7 @@ namespace FGrep
 
          if (getFolders(folder).If(out var folders, out exception))
          {
-            var unlessFunc = Unless.Map(p => func<string, bool>(text => text.IsMatch(p, IgnoreCase, Multiline))).DefaultTo(() => _ => false);
+            var unlessFunc = Unless.Map(p => func<string, bool>(text => IsMatch(text, p))).DefaultTo(() => _ => false);
             foreach (var subfolder in folders)
             {
                matchFolderText(subfolder, indent + 3, unlessFunc);
@@ -512,47 +534,79 @@ namespace FGrep
 
       protected void replaceText()
       {
+         var fixedReplacement = Replacement.Replace("//", "~double");
+         fixedReplacement = fixedReplacement.Replace("/", "$");
+         fixedReplacement = fixedReplacement.Replace("~double", "/");
+
          if (File.If(out var file))
          {
+            assert(() => file).Must().Exist().OrThrow();
+
             if (Backup)
             {
                var backupFile = FileName.UniqueFileName(file.Folder, file);
                file.CopyTo(backupFile, true);
             }
 
-            var tempFile = FolderName.Temp + $"{uniqueID()}.{file.Extension}";
-
-            var newLines = new List<string>();
-
-            if (Delete)
+            if (OutputFile.If(out var outputFile))
             {
-               foreach (var line in file.Lines)
+               var tempFile = FolderName.Temp + $"{uniqueID()}.{file.Extension}";
+
+               var newLines = new List<string>();
+
+               if (Delete)
                {
-                  if (!line.IsMatch(Pattern, IgnoreCase, Multiline))
+                  foreach (var line in file.Lines)
                   {
-                     newLines.Add(line);
+                     if (!IsMatch(line))
+                     {
+                        newLines.Add(line);
+                     }
                   }
                }
+               else
+               {
+                  foreach (var line in file.Lines.Where(IsMatch))
+                  {
+                     var replacement = line.Substitute(Pattern, fixedReplacement, IgnoreCase, Multiline, Friendly);
+                     newLines.Add(replacement);
+                  }
+               }
+
+               tempFile.SetText(newLines.ToString("\r\n"), file.Encoding);
+
+               tempFile.CopyTo(outputFile, true);
+               tempFile.Delete();
             }
             else
             {
-               foreach (var line in file.Lines)
+               foreach (var line in file.Lines.Where(IsMatch))
                {
-                  var replacement = line.Substitute(Pattern, Replacement, IgnoreCase, Multiline);
-                  newLines.Add(line != replacement ? replacement : line);
+                  var replacement = line.Substitute(Pattern, fixedReplacement, IgnoreCase, Multiline, Friendly);
+                  WriteLine(replacement);
                }
             }
+         }
+         else
+         {
+            while (true)
+            {
+               var line = ReadLine();
+               if (line == null)
+               {
+                  break;
+               }
 
-            tempFile.SetText(newLines.ToString("\r\n"), file.Encoding);
-
-            tempFile.CopyTo(file, true);
-            tempFile.Delete();
+               var replacement = line.Substitute(Pattern, fixedReplacement, IgnoreCase, Multiline, Friendly);
+               WriteLine(replacement);
+            }
          }
       }
 
-      protected static IMaybe<string> substitute(string line, string pattern, string replacement, bool ignoreCase, bool multiline)
+      protected static IMaybe<string> substitute(string line, string pattern, string replacement, bool ignoreCase, bool multiline, bool friendly)
       {
-         return maybe(line.IsMatch(pattern, ignoreCase, multiline), () => line.Substitute(pattern, replacement, ignoreCase, multiline));
+         return maybe(line.IsMatch(pattern, ignoreCase, multiline, friendly),
+            () => line.Substitute(pattern, replacement, ignoreCase, multiline, friendly));
       }
 
       protected void substitute()
@@ -561,6 +615,7 @@ namespace FGrep
          var replacement = Replacement;
          var ignoreCase = IgnoreCase;
          var multiline = Multiline;
+         var friendly = Friendly;
 
          while (true)
          {
@@ -569,7 +624,7 @@ namespace FGrep
             {
                break;
             }
-            else if (substitute(line, pattern, replacement, ignoreCase, multiline).If(out var substituted))
+            else if (substitute(line, pattern, replacement, ignoreCase, multiline, friendly).If(out var substituted))
             {
                WriteLine(substituted);
             }
