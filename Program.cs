@@ -185,7 +185,7 @@ namespace FGrep
             WriteLine($"exclude {Exclude.Guillemetify()}");
             excludes = f => f.NameExtension.IsMatch(Exclude);
          }
-         else if (ExcludeExt.IsEmpty())
+         else if (ExcludeExt.IsNotEmpty())
          {
             WriteLine($"exclude extension {ExcludeExt.Guillemetify()}");
             excludes = f => f.Extension.EndsWith(ExcludeExt);
