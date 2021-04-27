@@ -14,7 +14,6 @@ using Core.Numbers;
 using Core.RegularExpressions;
 using Core.Strings;
 using static System.Console;
-using static Core.Assertions.AssertionFunctions;
 using static Core.Lambdas.LambdaFunctions;
 using static Core.Monads.MonadFunctions;
 using static Core.Strings.StringFunctions;
@@ -142,7 +141,7 @@ namespace FGrep
 
       protected void findAction(FolderName folder)
       {
-         assert(() => folder).Must().Value.Must().Exist().OrThrow();
+         folder.Must().Value.Must().Exist().OrThrow();
 
          includes = f => true;
          excludes = f => false;
@@ -211,7 +210,7 @@ namespace FGrep
 
       protected void findLines(FileName file)
       {
-         assert(() => file).Must().Exist().OrThrow();
+         file.Must().Exist().OrThrow();
 
          Func<string, bool> matches;
          if (Not)
@@ -262,14 +261,14 @@ namespace FGrep
 
       protected void replaceAction()
       {
-         assert(() => Replacement).Must().Not.BeNullOrEmpty().OrThrow();
+         Replacement.Must().Not.BeNullOrEmpty().OrThrow();
 
          replaceText();
       }
 
       protected void regexAction()
       {
-         assert(() => Pattern).Must().Not.BeNullOrEmpty().OrThrow();
+         Pattern.Must().Not.BeNullOrEmpty().OrThrow();
 
          matcher.IsMatch(string.Empty, Pattern);
          WriteLine(matcher.Pattern);
@@ -540,7 +539,7 @@ namespace FGrep
 
          if (File.If(out var file))
          {
-            assert(() => file).Must().Exist().OrThrow();
+            file.Must().Exist().OrThrow();
 
             if (Backup)
             {
