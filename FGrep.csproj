@@ -46,6 +46,8 @@
     <Reference Include="System.Core" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="FilePattern.cs" />
+    <Compile Include="FolderArgs.cs" />
     <Compile Include="MultiFinder.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="ProgressWriter.cs" />

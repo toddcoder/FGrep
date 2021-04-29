@@ -24,6 +24,8 @@ namespace FGrep
    {
       protected Func<FileName, bool> includes;
       protected Func<FileName, bool> excludes;
+      protected Func<string, bool> matches;
+      protected Func<string, bool> unless;
       protected int fileCount;
       protected int lineCount;
       protected IMaybe<Stopwatch> _stopwatch;
@@ -46,6 +48,11 @@ namespace FGrep
          Color = none<string>();
          Friendly = true;
          OutputFile = none<FileName>();
+
+         includes = _ => true;
+         excludes = _ => false;
+         matches = _ => false;
+         unless = _ => true;
       }
 
       protected bool IsMatch(string input, string pattern) => input.IsMatch(pattern, IgnoreCase, Multiline, Friendly);
@@ -100,6 +107,10 @@ namespace FGrep
          {
             substitute();
          }
+         else if (Dir)
+         {
+            dir();
+         }
          else if (Pattern.IsNotEmpty())
          {
             find();
@@ -120,6 +131,115 @@ namespace FGrep
          {
             WriteLine($"File count  : {fileCount}");
             WriteLine($"Line count  : {lineCount}");
+         }
+      }
+
+      protected void setPatterns()
+      {
+         if (Not)
+         {
+            matches = line => !IsMatch(line);
+         }
+         else
+         {
+            matches = IsMatch;
+         }
+
+         unless = Unless.Map(p => func<string, bool>(line => IsMatch(line, p))).DefaultTo(() => _ => false);
+
+         if (Include.IsNotEmpty())
+         {
+            includes = f => IsMatch(f.NameExtension, Include);
+         }
+         else if (IncludeExt.IsNotEmpty())
+         {
+            includes = f => f.NameExtension.EndsWith(IncludeExt);
+         }
+         else
+         {
+            includes = _ => true;
+         }
+
+         if (Exclude.IsNotEmpty())
+         {
+            excludes = f => IsMatch(f.NameExtension, Exclude);
+         }
+         else if (ExcludeExt.IsNotEmpty())
+         {
+            excludes = f => f.NameExtension.EndsWith(ExcludeExt);
+         }
+         else
+         {
+            excludes = _ => false;
+         }
+      }
+
+      protected void dir()
+      {
+         Folder.Must().HaveValue().OrThrow();
+
+         if (Folder.If(out var folder))
+         {
+            folder.Must().Exist().OrThrow();
+
+            includes = f => true;
+            excludes = f => false;
+            if (Not)
+            {
+               matches = line => !IsMatch(line);
+            }
+            else
+            {
+               matches = IsMatch;
+            }
+            unless = Unless.Map(p => func<string, bool>(line => IsMatch(line, p))).DefaultTo(() => _ => false);
+
+            dirFolder(folder);
+         }
+      }
+
+      protected void dirFolder(FolderName folder)
+      {
+         string backSpaces() => "\b".Repeat(folder.FullPath.Length);
+
+         var spaces = backSpaces();
+         Write(folder.FullPath);
+
+         var fileFound = false;
+         try
+         {
+            foreach (var file in folder.Files.Where(f => includes(f) && !excludes(f)))
+            {
+               var fileNameExtension = file.NameExtension;
+               if (matches(fileNameExtension) && !unless(fileNameExtension))
+               {
+                  WriteLine($"   {fileNameExtension}");
+                  fileFound = true;
+               }
+            }
+         }
+         catch (Exception exception)
+         {
+            WriteLine(exception.Message);
+         }
+         finally
+         {
+            if (!fileFound)
+            {
+               Write(spaces);
+            }
+         }
+
+         try
+         {
+            foreach (var subfolder in folder.Folders)
+            {
+               dirFolder(subfolder);
+            }
+         }
+         catch (Exception exception)
+         {
+            WriteLine(exception.Message);
          }
       }
 
@@ -199,8 +319,8 @@ namespace FGrep
 
          if (AllText)
          {
-            var unless = Unless.Map(p => func<string, bool>(line => IsMatch(line, p))).DefaultTo(() => _ => false);
-            matchFolderText(folder, 0, unless);
+            unless = Unless.Map(p => func<string, bool>(line => IsMatch(line, p))).DefaultTo(() => _ => false);
+            matchFolderText(folder, 0);
          }
          else
          {
@@ -211,8 +331,6 @@ namespace FGrep
       protected void findLines(FileName file)
       {
          file.Must().Exist().OrThrow();
-
-         Func<string, bool> matches;
          if (Not)
          {
             matches = line => !IsMatch(line);
@@ -222,7 +340,7 @@ namespace FGrep
             matches = IsMatch;
          }
 
-         var unless = Unless.Map(p => func<string, bool>(line => IsMatch(line, p))).DefaultTo(() => _ => false);
+         unless = Unless.Map(p => func<string, bool>(line => IsMatch(line, p))).DefaultTo(() => _ => false);
 
          foreach (var line in file.Lines.Where(line => matches(line) && !unless(line)))
          {
@@ -232,7 +350,6 @@ namespace FGrep
 
       protected void findLines()
       {
-         Func<string, bool> matches;
          if (Not)
          {
             matches = line => !IsMatch(line);
@@ -242,7 +359,7 @@ namespace FGrep
             matches = IsMatch;
          }
 
-         var unless = Unless.Map(p => func<string, bool>(line => IsMatch(line, p))).DefaultTo(() => _ => false);
+         unless = Unless.Map(p => func<string, bool>(line => IsMatch(line, p))).DefaultTo(() => _ => false);
 
          while (true)
          {
@@ -279,6 +396,8 @@ namespace FGrep
       public bool Replace { get; set; }
 
       public bool Regex { get; set; }
+
+      public bool Dir { get; set; }
 
       public string Pattern { get; set; }
 
@@ -379,7 +498,7 @@ namespace FGrep
 
          if (getFiles(folder).If(out var files, out var exception))
          {
-            var unless = Unless.Map(p => func<string, bool>(line => IsMatch(line, p))).DefaultTo(() => _ => false);
+            unless = Unless.Map(p => func<string, bool>(line => IsMatch(line, p))).DefaultTo(() => _ => false);
 
             foreach (var file in files)
             {
@@ -443,7 +562,7 @@ namespace FGrep
          }
       }
 
-      protected void matchFolderText(FolderName folder, int indent, Func<string, bool> unless)
+      protected void matchFolderText(FolderName folder, int indent)
       {
          var prefix = " ".Repeat(indent);
 
@@ -512,10 +631,10 @@ namespace FGrep
 
          if (getFolders(folder).If(out var folders, out exception))
          {
-            var unlessFunc = Unless.Map(p => func<string, bool>(text => IsMatch(text, p))).DefaultTo(() => _ => false);
+            unless = Unless.Map(p => func<string, bool>(text => IsMatch(text, p))).DefaultTo(() => _ => false);
             foreach (var subfolder in folders)
             {
-               matchFolderText(subfolder, indent + 3, unlessFunc);
+               matchFolderText(subfolder, indent + 3);
             }
          }
          else
