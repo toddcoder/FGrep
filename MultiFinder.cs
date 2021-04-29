@@ -8,7 +8,6 @@ using Core.Numbers;
 using Core.RegularExpressions;
 using Core.Strings;
 using Core.Threading;
-using static Core.Assertions.AssertionFunctions;
 
 namespace FGrep
 {
@@ -16,7 +15,7 @@ namespace FGrep
    {
       public static IResult<MultiFinder> FromFolder(FolderName folder, Program program)
       {
-         return assert(() => folder).Must().Exist().OrFailure().Map(f =>
+         return folder.Must().Exist().OrFailure().Map(f =>
          {
             var pattern = program.Pattern;
             Bits32<RegexOptions> options = RegexOptions.None;
