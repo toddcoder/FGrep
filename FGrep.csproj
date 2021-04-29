@@ -46,7 +46,9 @@
     <Reference Include="System.Core" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="FilePattern.cs" />
+    <Compile Include="FileArgs.cs" />
+    <Compile Include="Finder.cs" />
+    <Compile Include="FindResult.cs" />
     <Compile Include="FolderArgs.cs" />
     <Compile Include="MultiFinder.cs" />
     <Compile Include="Program.cs" />
