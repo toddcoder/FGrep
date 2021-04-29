@@ -95,5 +95,13 @@ namespace FGrep
             }
          }
       }
+
+      public IEnumerable<string> FilesByLine(FolderName folder, Func<FileName, int, string, string> mapFunc)
+      {
+         foreach (var (file, lineNumber, line) in FilesByLine(folder))
+         {
+            yield return mapFunc(file, lineNumber, line);
+         }
+      }
    }
 }
