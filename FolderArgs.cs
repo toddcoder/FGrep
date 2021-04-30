@@ -1,8 +1,9 @@
-﻿using Core.Computers;
+﻿using System;
+using Core.Computers;
 
 namespace FGrep
 {
-   public class FolderArgs
+   public class FolderArgs : EventArgs
    {
       public FolderArgs(FolderName folder)
       {
