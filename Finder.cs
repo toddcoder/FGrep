@@ -74,6 +74,18 @@ namespace FGrep
 
       public bool MatchedLine(string line) => matches(line) && !unless(line);
 
+      public IMaybe<FindResult> FindResult(string line)
+      {
+         if (getMatcher(line).If(out var matcher))
+         {
+            return new FindResult { Line = line, Matcher = matcher }.Some();
+         }
+         else
+         {
+            return none<FindResult>();
+         }
+      }
+
       public bool MatchedFile(FileName file) => includeFile(file) && !excludeFile(file);
 
       public IEnumerable<FindResult> FileLines(FileName file)

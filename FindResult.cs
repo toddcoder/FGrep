@@ -1,6 +1,8 @@
-﻿using Core.Computers;
+﻿using System.Collections.Generic;
+using Core.Computers;
 using Core.Monads;
 using Core.RegularExpressions;
+using Core.Strings;
 using static Core.Monads.MonadFunctions;
 
 namespace FGrep
@@ -33,10 +35,23 @@ namespace FGrep
 
       public int IndentLevel { get; set; }
 
-      public FindResult Clone() => new FindResult
+      public FindResult Clone() => new()
       {
          File = File, LineNumber = LineNumber, Line = Line, LineCount = LineCount, Folder = Folder, FileNameExtension = FileNameExtension,
-         IndentLevel = IndentLevel
+         IndentLevel = IndentLevel, Matcher = Matcher
       };
+
+      public string ExactLine(int screenWidth) => Line.Replace("\t", " ").Exactly(screenWidth, normalizeWhitespace: false);
+
+      public IEnumerable<string> MatchIndicators()
+      {
+         var offset = 0;
+         foreach (var (_, index, length) in Matcher)
+         {
+            yield return $"{" ".Repeat(index - offset)}{"^".Repeat(length)}";
+
+            offset += index + length;
+         }
+      }
    }
 }
