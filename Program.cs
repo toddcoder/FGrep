@@ -1,8 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
-using System.Text;
 using Core.Applications;
 using Core.Assertions;
 using Core.Computers;
@@ -14,7 +14,6 @@ using Core.Numbers;
 using Core.RegularExpressions;
 using Core.Strings;
 using static System.Console;
-using static Core.Lambdas.LambdaFunctions;
 using static Core.Monads.MonadFunctions;
 using static Core.Strings.StringFunctions;
 
@@ -22,15 +21,11 @@ namespace FGrep
 {
    internal class Program : CommandLineInterface, ICommandFile
    {
-      protected Func<FileName, bool> includes;
-      protected Func<FileName, bool> excludes;
-      protected Func<string, bool> matches;
-      protected Func<string, bool> unless;
-      protected int fileCount;
-      protected int lineCount;
+      protected int lineTally;
+      protected int fileTally;
       protected IMaybe<Stopwatch> _stopwatch;
       protected Func<string, string> truncFunc;
-      protected Matcher matcher;
+      protected int screenWidth;
 
       public Program()
       {
@@ -49,10 +44,7 @@ namespace FGrep
          Friendly = true;
          OutputFile = none<FileName>();
 
-         includes = _ => true;
-         excludes = _ => false;
-         matches = _ => false;
-         unless = _ => true;
+         screenWidth = WindowWidth - 3;
       }
 
       protected bool IsMatch(string input, string pattern) => input.IsMatch(pattern, IgnoreCase, Multiline, Friendly);
@@ -89,8 +81,6 @@ namespace FGrep
          _stopwatch = maybe(Verbose || Stopwatch, () => new Stopwatch());
          _stopwatch.IfThen(s => s.Start());
 
-         matcher = new Matcher(Friendly);
-
          if (Find)
          {
             find();
@@ -106,10 +96,6 @@ namespace FGrep
          else if (Sub)
          {
             substitute();
-         }
-         else if (Dir)
-         {
-            dir();
          }
          else if (Pattern.IsNotEmpty())
          {
@@ -129,117 +115,8 @@ namespace FGrep
 
          if (Find && Verbose)
          {
-            WriteLine($"File count  : {fileCount}");
-            WriteLine($"Line count  : {lineCount}");
-         }
-      }
-
-      protected void setPatterns()
-      {
-         if (Not)
-         {
-            matches = line => !IsMatch(line);
-         }
-         else
-         {
-            matches = IsMatch;
-         }
-
-         unless = Unless.Map(p => func<string, bool>(line => IsMatch(line, p))).DefaultTo(() => _ => false);
-
-         if (Include.IsNotEmpty())
-         {
-            includes = f => IsMatch(f.NameExtension, Include);
-         }
-         else if (IncludeExt.IsNotEmpty())
-         {
-            includes = f => f.NameExtension.EndsWith(IncludeExt);
-         }
-         else
-         {
-            includes = _ => true;
-         }
-
-         if (Exclude.IsNotEmpty())
-         {
-            excludes = f => IsMatch(f.NameExtension, Exclude);
-         }
-         else if (ExcludeExt.IsNotEmpty())
-         {
-            excludes = f => f.NameExtension.EndsWith(ExcludeExt);
-         }
-         else
-         {
-            excludes = _ => false;
-         }
-      }
-
-      protected void dir()
-      {
-         Folder.Must().HaveValue().OrThrow();
-
-         if (Folder.If(out var folder))
-         {
-            folder.Must().Exist().OrThrow();
-
-            includes = f => true;
-            excludes = f => false;
-            if (Not)
-            {
-               matches = line => !IsMatch(line);
-            }
-            else
-            {
-               matches = IsMatch;
-            }
-            unless = Unless.Map(p => func<string, bool>(line => IsMatch(line, p))).DefaultTo(() => _ => false);
-
-            dirFolder(folder);
-         }
-      }
-
-      protected void dirFolder(FolderName folder)
-      {
-         string backSpaces() => "\b".Repeat(folder.FullPath.Length);
-
-         var spaces = backSpaces();
-         Write(folder.FullPath);
-
-         var fileFound = false;
-         try
-         {
-            foreach (var file in folder.Files.Where(f => includes(f) && !excludes(f)))
-            {
-               var fileNameExtension = file.NameExtension;
-               if (matches(fileNameExtension) && !unless(fileNameExtension))
-               {
-                  WriteLine($"   {fileNameExtension}");
-                  fileFound = true;
-               }
-            }
-         }
-         catch (Exception exception)
-         {
-            WriteLine(exception.Message);
-         }
-         finally
-         {
-            if (!fileFound)
-            {
-               Write(spaces);
-            }
-         }
-
-         try
-         {
-            foreach (var subfolder in folder.Folders)
-            {
-               dirFolder(subfolder);
-            }
-         }
-         catch (Exception exception)
-         {
-            WriteLine(exception.Message);
+            WriteLine($"File count  : {fileTally}");
+            WriteLine($"Line count  : {lineTally}");
          }
       }
 
@@ -253,6 +130,10 @@ namespace FGrep
          {
             findLines(file);
          }
+         else if (Mark)
+         {
+            findLinesMarked();
+         }
          else
          {
             findLines();
@@ -263,8 +144,7 @@ namespace FGrep
       {
          folder.Must().Value.Must().Exist().OrThrow();
 
-         includes = f => true;
-         excludes = f => false;
+         var finder = new Finder(Pattern, Not, IgnoreCase, Multiline, Unless, Include, IncludeExt, Exclude, ExcludeExt, Friendly);
 
          if (Replacement.IsNotEmpty())
          {
@@ -276,7 +156,7 @@ namespace FGrep
             if (truncate.IsIntegral())
             {
                var amount = truncate.ToInt();
-               truncFunc = line => line.Truncate(amount);
+               truncFunc = line => line.Exactly(amount);
             }
             else if (truncate == "-")
             {
@@ -284,7 +164,7 @@ namespace FGrep
             }
             else
             {
-               truncFunc = line => line.Truncate(80);
+               truncFunc = line => line.Exactly(80);
             }
          }
          else
@@ -292,74 +172,40 @@ namespace FGrep
             truncFunc = line => line;
          }
 
-         if (Include.IsNotEmpty())
-         {
-            WriteLine($"include {Include.Guillemetify()}");
-            includes = f => IsMatch(f.NameExtension);
-         }
-         else if (IncludeExt.IsNotEmpty())
-         {
-            WriteLine($"include extension {IncludeExt.Guillemetify()}");
-            includes = f => f.Extension.EndsWith(IncludeExt);
-         }
+         fileTally = 0;
+         lineTally = 0;
 
-         if (Exclude.IsNotEmpty())
+         if (Mark)
          {
-            WriteLine($"exclude {Exclude.Guillemetify()}");
-            excludes = f => IsMatch(f.NameExtension);
-         }
-         else if (ExcludeExt.IsNotEmpty())
-         {
-            WriteLine($"exclude extension {ExcludeExt.Guillemetify()}");
-            excludes = f => f.Extension.EndsWith(ExcludeExt);
-         }
-
-         fileCount = 0;
-         lineCount = 0;
-
-         if (AllText)
-         {
-            unless = Unless.Map(p => func<string, bool>(line => IsMatch(line, p))).DefaultTo(() => _ => false);
-            matchFolderText(folder, 0);
+            matchFolderMarked(folder, finder);
          }
          else
          {
-            matchFolder(folder, 0);
+            matchFolder(folder, finder, result => truncFunc(result.Line), true);
          }
       }
 
       protected void findLines(FileName file)
       {
          file.Must().Exist().OrThrow();
-         if (Not)
-         {
-            matches = line => !IsMatch(line);
-         }
-         else
-         {
-            matches = IsMatch;
-         }
 
-         unless = Unless.Map(p => func<string, bool>(line => IsMatch(line, p))).DefaultTo(() => _ => false);
+         var filePattern = new Finder(Pattern, Not, IgnoreCase, Multiline, Unless, Include, IncludeExt, Exclude, ExcludeExt, Friendly);
+         var width = 0;
 
-         foreach (var line in file.Lines.Where(line => matches(line) && !unless(line)))
+         foreach (var result in filePattern.FileLines(file))
          {
-            WriteLine(line);
+            if (result.LineCount.If(out var lineCount))
+            {
+               width = lineCount;
+            }
+
+            WriteLine($"{result.LineNumber.RightJustify(width, '0')} | {result.Line.Exactly(80)}");
          }
       }
 
       protected void findLines()
       {
-         if (Not)
-         {
-            matches = line => !IsMatch(line);
-         }
-         else
-         {
-            matches = IsMatch;
-         }
-
-         unless = Unless.Map(p => func<string, bool>(line => IsMatch(line, p))).DefaultTo(() => _ => false);
+         var filePattern = new Finder(Pattern, Not, IgnoreCase, Multiline, Unless, "", "", "", "", Friendly);
 
          while (true)
          {
@@ -369,9 +215,35 @@ namespace FGrep
                break;
             }
 
-            if (matches(line) && !unless(line))
+            if (filePattern.MatchedLine(line))
             {
                WriteLine(line);
+            }
+         }
+      }
+
+      protected void findLinesMarked()
+      {
+         var filePattern = new Finder(Pattern, Not, IgnoreCase, Multiline, Unless, "", "", "", "", Friendly);
+
+         while (true)
+         {
+            var line = ReadLine();
+            if (line == null)
+            {
+               break;
+            }
+
+            if (filePattern.FindResult(line).If(out var result))
+            {
+               WriteLine(result.ExactLine(screenWidth));
+
+               foreach (var indicator in result.MatchIndicators())
+               {
+                  Write(indicator);
+               }
+
+               WriteLine();
             }
          }
       }
@@ -386,6 +258,7 @@ namespace FGrep
       protected void regexAction()
       {
          Pattern.Must().Not.BeNullOrEmpty().OrThrow();
+         var matcher = new Matcher();
 
          matcher.IsMatch(string.Empty, Pattern);
          WriteLine(matcher.Pattern);
@@ -396,8 +269,6 @@ namespace FGrep
       public bool Replace { get; set; }
 
       public bool Regex { get; set; }
-
-      public bool Dir { get; set; }
 
       public string Pattern { get; set; }
 
@@ -431,7 +302,7 @@ namespace FGrep
 
       public bool Delete { get; set; }
 
-      public bool AllText { get; set; }
+      public bool Mark { get; set; }
 
       public bool Not { get; set; }
 
@@ -485,169 +356,63 @@ namespace FGrep
          WriteLine("   -S");
       }
 
-      protected void matchFolder(FolderName folder, int indent)
+      protected void matchFolder(FolderName folder, Finder finder, Func<FindResult, string> toString, bool endOfLine)
       {
-         var prefix = " ".Repeat(indent);
-
-         if (Verbose)
+         if (finder.GetFilesByLine(folder).If(out var results, out var exception))
          {
-            WriteLine($"{prefix}Checking folder {folder}");
-         }
+            FileName fileCompare = "x.txt";
 
-         var wroteFolder = false;
-
-         if (getFiles(folder).If(out var files, out var exception))
-         {
-            unless = Unless.Map(p => func<string, bool>(line => IsMatch(line, p))).DefaultTo(() => _ => false);
-
-            foreach (var file in files)
+            foreach (var result in results)
             {
-               if (Verbose)
+               if (result.Folder.If(out var foundFolder) && Verbose)
                {
-                  WriteLine($"{prefix}{prefix}Checking {file.NameExtension}");
+                  WriteLine($"Checking folder {foundFolder}");
+                  WriteLine($"----------------{"-".Repeat(foundFolder.FullPath.Length)}");
                }
 
-               var wroteName = false;
-
-               var _lines = file.TryTo.Lines;
-               if (_lines.If(out var lines, out exception))
+               if (result.File != fileCompare)
                {
-                  for (var i = 0; i < lines.Length; i++)
-                  {
-                     var line = lines[i];
-                     if (IsMatch(line) && !unless(line))
-                     {
-                        if (!wroteName)
-                        {
-                           if (!wroteFolder)
-                           {
-                              WriteLine($"{prefix}{folder}");
-                              wroteFolder = true;
-                           }
+                  WriteLine($"|{result.File.NameExtension}");
+                  fileTally++;
 
-                           WriteLine($"{prefix}{prefix}|");
-                           WriteLine($"{prefix}{prefix}|{file.NameExtension}");
-                           wroteName = true;
-                           fileCount++;
-                        }
+                  fileCompare = result.File;
+               }
 
-                        WriteLine($"{prefix}{prefix}|{prefix}{i + 1:D6}: {truncFunc(line)}");
-                        lineCount++;
-                     }
-                  }
+               var text = toString(result);
+               if (endOfLine)
+               {
+                  WriteLine(text);
                }
                else
                {
-                  WriteLine($"Opening {file} failed");
-                  WriteLine(exception);
+                  Write(text);
                }
             }
          }
          else
          {
-            WriteLine($"Couldn't retrieve files: {exception.Message}");
-            return;
-         }
-
-         if (getFolders(folder).If(out var folders, out exception))
-         {
-            foreach (var subfolder in folders)
-            {
-               matchFolder(subfolder, indent + 3);
-            }
-         }
-         else
-         {
-            WriteLine($"Couldn't retrieve folders: {exception.Message}");
+            WriteLine(exception.Message);
          }
       }
 
-      protected void matchFolderText(FolderName folder, int indent)
+      protected void matchFolderMarked(FolderName folder, Finder finder)
       {
-         var prefix = " ".Repeat(indent);
-
-         if (Verbose)
-         {
-            WriteLine($"{prefix}Checking folder {folder}");
-         }
-
-         var wroteFolder = false;
-
-         if (getFiles(folder).If(out var files, out var exception))
-         {
-            foreach (var file in files)
-            {
-               if (Verbose)
-               {
-                  WriteLine($"{prefix}{prefix}Checking {file.NameExtension}");
-               }
-
-               var wroteName = false;
-
-               if (file.TryTo.Text.If(out var text, out exception))
-               {
-                  if (matcher.IsMatch(text, Pattern, IgnoreCase, Multiline) && !unless(text))
-                  {
-                     if (!wroteName)
-                     {
-                        if (!wroteFolder)
-                        {
-                           WriteLine($"{prefix}{folder}");
-                           wroteFolder = true;
-                        }
-
-                        WriteLine($"{prefix}{prefix}|");
-                        WriteLine($"{prefix}{prefix}|{file.NameExtension}");
-                        wroteName = true;
-                        fileCount++;
-                     }
-
-                     var builder = new StringBuilder();
-                     foreach (var (substring, index, length) in matcher)
-                     {
-                        builder.Append("...<");
-                        builder.Append(substring);
-                        var restOfText = text.Drop(index + length).KeepUntil('\r', '\n');
-                        lineCount++;
-                        builder.Append(">");
-                        builder.Append(restOfText);
-                        WriteLine($"{prefix}{prefix}|{prefix}{truncFunc(builder.ToString())}");
-                        builder.Clear();
-                     }
-                  }
-               }
-               else
-               {
-                  WriteLine($"Opening {file} failed");
-                  WriteLine(exception);
-               }
-            }
-         }
-         else
-         {
-            WriteLine($"Couldn't retrieve files: {exception.Message}");
-            return;
-         }
-
-         if (getFolders(folder).If(out var folders, out exception))
-         {
-            unless = Unless.Map(p => func<string, bool>(text => IsMatch(text, p))).DefaultTo(() => _ => false);
-            foreach (var subfolder in folders)
-            {
-               matchFolderText(subfolder, indent + 3);
-            }
-         }
-         else
-         {
-            WriteLine($"Couldn't retrieve folders: {exception.Message}");
-         }
+         matchFolder(folder, finder, format, false);
       }
 
-      protected static IResult<FolderName[]> getFolders(FolderName folder) => folder.TryTo.Folders;
-
-      protected IResult<FileName[]> getFiles(FolderName folder)
+      protected string format(FindResult result)
       {
-         return folder.TryTo.Files.Map(fs => fs.Where(f => !excludes(f)).Where(f => includes(f)).ToArray());
+         using var writer = new StringWriter();
+
+         writer.WriteLine(result.ExactLine(screenWidth));
+         foreach (var indicator in result.MatchIndicators())
+         {
+            writer.Write(indicator);
+         }
+
+         writer.WriteLine();
+
+         return writer.ToString();
       }
 
       protected void replaceText()
