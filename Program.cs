@@ -103,6 +103,10 @@ namespace FGrep
          {
             find();
          }
+         else if (Unfriendly)
+         {
+            unfriendly();
+         }
          else
          {
             throw "Didn't recognize action".Throws();
@@ -270,9 +274,13 @@ namespace FGrep
 
       public bool Regex { get; set; }
 
+      public bool Unfriendly { get; set; }
+
       public string Pattern { get; set; }
 
       public string Replacement { get; set; }
+
+      public string Input { get; set; }
 
       public IMaybe<FolderName> Folder { get; set; }
 
@@ -503,6 +511,24 @@ namespace FGrep
             {
                WriteLine(substituted);
             }
+         }
+      }
+
+      protected void unfriendly()
+      {
+         Matcher matcher = Pattern;
+         if (matcher.Matches(Input).If(out var result, out var _exception))
+         {
+            WriteLine($"Result : {result.ToString().Guillemetify()}");
+            WriteLine($"Pattern: {matcher.Pattern}");
+         }
+         else if (_exception.If(out var exception))
+         {
+            WriteLine($"Exception: {exception.Message}");
+         }
+         else
+         {
+            WriteLine("No match");
          }
       }
 
