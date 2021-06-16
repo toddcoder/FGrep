@@ -1,11 +1,9 @@
 ﻿using System;
 using System.Linq;
-using System.Text.RegularExpressions;
 using Core.Assertions;
 using Core.Computers;
 using Core.Monads;
-using Core.Numbers;
-using Core.RegularExpressions;
+using Core.RegexMatching;
 using Core.Strings;
 using Core.Threading;
 
@@ -18,9 +16,6 @@ namespace FGrep
          return folder.Must().Exist().OrFailure().Map(f =>
          {
             var pattern = program.Pattern;
-            Bits32<RegexOptions> options = RegexOptions.None;
-            options[RegexOptions.IgnoreCase] = program.IgnoreCase;
-            options[RegexOptions.Multiline] = program.Multiline;
             var multiThreaded = program.Threaded;
 
             Func<FileName, bool> doesInclude;
@@ -28,7 +23,7 @@ namespace FGrep
 
             if (program.Include.IsNotEmpty())
             {
-               doesInclude = incF => incF.NameExtension.IsMatch(program.Include, options);
+               doesInclude = incF => incF.NameExtension.IsMatch(program.Include);
             }
             else if (program.IncludeExt.IsNotEmpty())
             {
@@ -36,12 +31,12 @@ namespace FGrep
             }
             else
             {
-               doesInclude = incF => true;
+               doesInclude = _ => true;
             }
 
             if (program.Exclude.IsNotEmpty())
             {
-               doesExclude = excF => !excF.NameExtension.IsMatch(program.Exclude, options);
+               doesExclude = excF => !excF.NameExtension.IsMatch(program.Exclude);
             }
             else if (program.ExcludeExt.IsNotEmpty())
             {
@@ -49,28 +44,26 @@ namespace FGrep
             }
             else
             {
-               doesExclude = excF => false;
+               doesExclude = _ => false;
             }
 
             bool including(FileName includingF) => doesInclude(includingF) && doesExclude(includingF);
 
-            return new MultiFinder(f, pattern, options, multiThreaded, including);
+            return new MultiFinder(f, pattern, multiThreaded, including);
          });
       }
 
       protected FolderName startingFolder;
       protected string pattern;
-      protected RegexOptions regexOptions;
       protected Func<FileName, bool> including;
       protected JobPool jobPool;
       protected object locker;
       protected ProgressWriter writer;
 
-      public MultiFinder(FolderName startingFolder, string pattern, RegexOptions regexOptions, bool multiThreaded, Func<FileName, bool> including)
+      public MultiFinder(FolderName startingFolder, string pattern, bool multiThreaded, Func<FileName, bool> including)
       {
          this.startingFolder = startingFolder;
          this.pattern = pattern;
-         this.regexOptions = regexOptions;
          this.including = including;
 
          jobPool = new JobPool(multiThreaded);
