@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Core.Computers;
 using Core.Monads;
-using Core.RegularExpressions;
+using Core.RegexMatching;
 using Core.Strings;
 using static Core.Monads.AttemptFunctions;
 using static Core.Monads.MonadFunctions;
@@ -13,7 +13,7 @@ namespace FGrep
    public class Finder
    {
       protected Func<string, bool> matches;
-      protected Func<string, IMaybe<Matcher>> getMatcher;
+      protected Func<string, IMatched<Result>> getMatcher;
       protected Func<string, bool> unless;
       protected Func<FileName, bool> includeFile;
       protected Func<FileName, bool> excludeFile;
@@ -21,33 +21,31 @@ namespace FGrep
       public event EventHandler<FolderArgs> FolderMatched;
       public event EventHandler<FileArgs> FileMatched;
 
-      public Finder(string pattern, bool not, bool ignoreCase, bool multiline, IMaybe<string> _unless, string include, string includeExt,
-         string exclude, string excludeExt, bool friendly)
+      public Finder(string pattern, bool not, IMaybe<string> _unless, string include, string includeExt, string exclude, string excludeExt)
       {
          if (not)
          {
-            matches = line => !line.IsMatch(pattern, ignoreCase, multiline, friendly);
+            matches = line => !line.IsMatch(pattern);
          }
          else
          {
-            matches = line => line.IsMatch(pattern, ignoreCase, multiline, friendly);
+            matches = line => line.IsMatch(pattern);
          }
 
          if (not)
          {
-            getMatcher = _ => none<Matcher>();
+            getMatcher = _ => notMatched<Result>();
          }
          else
          {
-            getMatcher = line => line.Matcher(pattern, ignoreCase, multiline, friendly);
+            getMatcher = line => ((Matcher)pattern).Matches(line);
          }
 
-         unless = _unless.Map(unless => (Func<string, bool>)(line => !line.IsMatch(unless, ignoreCase, multiline, friendly)))
-            .DefaultTo(() => _ => false);
+         unless = _unless.Map(unless => (Func<string, bool>)(line => !line.IsMatch(unless))).DefaultTo(() => _ => false);
 
          if (include.IsNotEmpty())
          {
-            includeFile = file => file.NameExtension.IsMatch(include, ignoreCase, multiline, friendly);
+            includeFile = file => file.NameExtension.IsMatch(include);
          }
          else if (includeExt.IsNotEmpty())
          {
@@ -60,7 +58,7 @@ namespace FGrep
 
          if (exclude.IsNotEmpty())
          {
-            excludeFile = file => !file.NameExtension.IsMatch(include, ignoreCase, multiline, friendly);
+            excludeFile = file => !file.NameExtension.IsMatch(include);
          }
          else if (excludeExt.IsNotEmpty())
          {
@@ -78,7 +76,7 @@ namespace FGrep
       {
          if (getMatcher(line).If(out var matcher))
          {
-            return new FindResult { Line = line, Matcher = matcher }.Some();
+            return new FindResult { Line = line, Result = matcher }.Some();
          }
          else
          {
@@ -98,7 +96,7 @@ namespace FGrep
          {
             if (getMatcher(line).If(out var matcher))
             {
-               yield return new FindResult { LineNumber = lineNumber, Line = line, LineCount = lineCount, Matcher = matcher };
+               yield return new FindResult { LineNumber = lineNumber, Line = line, LineCount = lineCount, Result = matcher };
 
                if (lineCount.IsSome)
                {

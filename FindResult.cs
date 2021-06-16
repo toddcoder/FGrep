@@ -1,7 +1,7 @@
 ﻿using System.Collections.Generic;
 using Core.Computers;
 using Core.Monads;
-using Core.RegularExpressions;
+using Core.RegexMatching;
 using Core.Strings;
 using static Core.Monads.MonadFunctions;
 
@@ -13,7 +13,7 @@ namespace FGrep
       {
          File = @"c:\unknown.txt";
          Line = "";
-         Matcher = new Matcher();
+         Result = Result.Empty;
          LineCount = none<int>();
          Folder = none<FolderName>();
          FileNameExtension = "";
@@ -25,7 +25,7 @@ namespace FGrep
 
       public string Line { get; set; }
 
-      public Matcher Matcher { get; set; }
+      public Result Result { get; set; }
 
       public IMaybe<int> LineCount { get; set; }
 
@@ -38,7 +38,7 @@ namespace FGrep
       public FindResult Clone() => new()
       {
          File = File, LineNumber = LineNumber, Line = Line, LineCount = LineCount, Folder = Folder, FileNameExtension = FileNameExtension,
-         IndentLevel = IndentLevel, Matcher = Matcher
+         IndentLevel = IndentLevel, Result = Result
       };
 
       public string ExactLine(int screenWidth) => Line.Replace("\t", " ").Exactly(screenWidth, normalizeWhitespace: false);
@@ -46,7 +46,7 @@ namespace FGrep
       public IEnumerable<string> MatchIndicators()
       {
          var offset = 0;
-         foreach (var (_, index, length) in Matcher)
+         foreach (var (_, index, length) in Result)
          {
             yield return $"{" ".Repeat(index - offset)}{"^".Repeat(length)}";
 

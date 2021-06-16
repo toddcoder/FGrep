@@ -11,7 +11,7 @@ using Core.Enumerables;
 using Core.Exceptions;
 using Core.Monads;
 using Core.Numbers;
-using Core.RegularExpressions;
+using Core.RegexMatching;
 using Core.Strings;
 using static System.Console;
 using static Core.Monads.MonadFunctions;
@@ -47,7 +47,7 @@ namespace FGrep
          screenWidth = WindowWidth - 3;
       }
 
-      protected bool IsMatch(string input, string pattern) => input.IsMatch(pattern, IgnoreCase, Multiline, Friendly);
+      protected static bool IsMatch(string input, string pattern) => input.IsMatch(pattern);
 
       protected bool IsMatch(string input) => IsMatch(input, Pattern);
 
@@ -77,6 +77,8 @@ namespace FGrep
             displayHelp();
             return;
          }
+
+         Matcher.IsFriendly = Friendly;
 
          _stopwatch = maybe(Verbose || Stopwatch, () => new Stopwatch());
          _stopwatch.IfThen(s => s.Start());
@@ -144,12 +146,12 @@ namespace FGrep
       {
          folder.Must().Value.Must().Exist().OrThrow();
 
-         var finder = new Finder(Pattern, Not, IgnoreCase, Multiline, Unless, Include, IncludeExt, Exclude, ExcludeExt, Friendly);
+         var finder = new Finder(Pattern, Not, Unless, Include, IncludeExt, Exclude, ExcludeExt);
 
          if (Replacement.IsNotEmpty())
          {
             var replacement = Replacement.Replace("^", "$");
-            truncFunc = line => line.Substitute(Pattern, replacement, IgnoreCase, Multiline, Friendly);
+            truncFunc = line => line.Substitute(Pattern, replacement);
          }
          else if (Truncate.If(out var truncate))
          {
@@ -189,7 +191,7 @@ namespace FGrep
       {
          file.Must().Exist().OrThrow();
 
-         var filePattern = new Finder(Pattern, Not, IgnoreCase, Multiline, Unless, Include, IncludeExt, Exclude, ExcludeExt, Friendly);
+         var filePattern = new Finder(Pattern, Not, Unless, Include, IncludeExt, Exclude, ExcludeExt);
          var width = 0;
 
          foreach (var result in filePattern.FileLines(file))
@@ -205,7 +207,7 @@ namespace FGrep
 
       protected void findLines()
       {
-         var filePattern = new Finder(Pattern, Not, IgnoreCase, Multiline, Unless, "", "", "", "", Friendly);
+         var filePattern = new Finder(Pattern, Not, Unless, "", "", "", "");
 
          while (true)
          {
@@ -224,7 +226,7 @@ namespace FGrep
 
       protected void findLinesMarked()
       {
-         var filePattern = new Finder(Pattern, Not, IgnoreCase, Multiline, Unless, "", "", "", "", Friendly);
+         var filePattern = new Finder(Pattern, Not, Unless, "", "", "", "");
 
          while (true)
          {
@@ -258,9 +260,7 @@ namespace FGrep
       protected void regexAction()
       {
          Pattern.Must().Not.BeNullOrEmpty().OrThrow();
-         var matcher = new Matcher();
-
-         matcher.IsMatch(string.Empty, Pattern);
+         Matcher matcher = Pattern;
          WriteLine(matcher.Pattern);
       }
 
@@ -279,10 +279,6 @@ namespace FGrep
       public IMaybe<FileName> File { get; set; }
 
       public bool Backup { get; set; }
-
-      public bool IgnoreCase { get; set; }
-
-      public bool Multiline { get; set; }
 
       public bool Verbose { get; set; }
 
@@ -451,7 +447,7 @@ namespace FGrep
                {
                   foreach (var line in file.Lines.Where(IsMatch))
                   {
-                     var replacement = line.Substitute(Pattern, fixedReplacement, IgnoreCase, Multiline, Friendly);
+                     var replacement = line.Substitute(Pattern, fixedReplacement);
                      newLines.Add(replacement);
                   }
                }
@@ -465,7 +461,7 @@ namespace FGrep
             {
                foreach (var line in file.Lines.Where(IsMatch))
                {
-                  var replacement = line.Substitute(Pattern, fixedReplacement, IgnoreCase, Multiline, Friendly);
+                  var replacement = line.Substitute(Pattern, fixedReplacement);
                   WriteLine(replacement);
                }
             }
@@ -480,25 +476,21 @@ namespace FGrep
                   break;
                }
 
-               var replacement = line.Substitute(Pattern, fixedReplacement, IgnoreCase, Multiline, Friendly);
+               var replacement = line.Substitute(Pattern, fixedReplacement);
                WriteLine(replacement);
             }
          }
       }
 
-      protected static IMaybe<string> substitute(string line, string pattern, string replacement, bool ignoreCase, bool multiline, bool friendly)
+      protected static IMaybe<string> substitute(string line, string pattern, string replacement)
       {
-         return maybe(line.IsMatch(pattern, ignoreCase, multiline, friendly),
-            () => line.Substitute(pattern, replacement, ignoreCase, multiline, friendly));
+         return maybe(line.IsMatch(pattern), () => line.Substitute(pattern, replacement));
       }
 
       protected void substitute()
       {
          var pattern = Pattern;
          var replacement = Replacement;
-         var ignoreCase = IgnoreCase;
-         var multiline = Multiline;
-         var friendly = Friendly;
 
          while (true)
          {
@@ -507,7 +499,7 @@ namespace FGrep
             {
                break;
             }
-            else if (substitute(line, pattern, replacement, ignoreCase, multiline, friendly).If(out var substituted))
+            else if (substitute(line, pattern, replacement).If(out var substituted))
             {
                WriteLine(substituted);
             }
