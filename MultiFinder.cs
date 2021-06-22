@@ -3,7 +3,7 @@ using System.Linq;
 using Core.Assertions;
 using Core.Computers;
 using Core.Monads;
-using Core.RegexMatching;
+using Core.Matching;
 using Core.Strings;
 using Core.Threading;
 
@@ -54,13 +54,13 @@ namespace FGrep
       }
 
       protected FolderName startingFolder;
-      protected string pattern;
+      protected Pattern pattern;
       protected Func<FileName, bool> including;
       protected JobPool jobPool;
       protected object locker;
       protected ProgressWriter writer;
 
-      public MultiFinder(FolderName startingFolder, string pattern, bool multiThreaded, Func<FileName, bool> including)
+      public MultiFinder(FolderName startingFolder, Pattern pattern, bool multiThreaded, Func<FileName, bool> including)
       {
          this.startingFolder = startingFolder;
          this.pattern = pattern;

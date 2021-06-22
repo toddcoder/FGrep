@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Core.Computers;
 using Core.Monads;
-using Core.RegexMatching;
+using Core.Matching;
 using Core.Strings;
 using static Core.Monads.AttemptFunctions;
 using static Core.Monads.MonadFunctions;
@@ -21,7 +21,7 @@ namespace FGrep
       public event EventHandler<FolderArgs> FolderMatched;
       public event EventHandler<FileArgs> FileMatched;
 
-      public Finder(string pattern, bool not, IMaybe<string> _unless, string include, string includeExt, string exclude, string excludeExt)
+      public Finder(Pattern pattern, bool not, IMaybe<string> _unless, string include, string includeExt, string exclude, string excludeExt)
       {
          if (not)
          {
@@ -38,7 +38,7 @@ namespace FGrep
          }
          else
          {
-            getMatcher = line => ((Matcher)pattern).Matches(line);
+            getMatcher = pattern.MatchedBy;
          }
 
          unless = _unless.Map(unless => (Func<string, bool>)(line => !line.IsMatch(unless))).DefaultTo(() => _ => false);

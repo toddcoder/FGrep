@@ -11,7 +11,7 @@ using Core.Enumerables;
 using Core.Exceptions;
 using Core.Monads;
 using Core.Numbers;
-using Core.RegexMatching;
+using Core.Matching;
 using Core.Strings;
 using static System.Console;
 using static Core.Monads.MonadFunctions;
@@ -21,6 +21,7 @@ namespace FGrep
 {
    internal class Program : CommandLineInterface, ICommandFile
    {
+      protected Pattern pattern;
       protected int lineTally;
       protected int fileTally;
       protected IMaybe<Stopwatch> _stopwatch;
@@ -29,6 +30,8 @@ namespace FGrep
 
       public Program()
       {
+         Pattern.Must().Not.BeNullOrEmpty().OrThrow();
+         pattern = Pattern;
          Truncate = none<string>();
          Include = string.Empty;
          IncludeExt = string.Empty;
@@ -43,6 +46,8 @@ namespace FGrep
          Color = none<string>();
          Friendly = true;
          OutputFile = none<FileName>();
+         Input = string.Empty;
+         Unfriendly = false;
 
          screenWidth = WindowWidth - 3;
       }
@@ -78,7 +83,7 @@ namespace FGrep
             return;
          }
 
-         Matcher.IsFriendly = Friendly;
+         Core.Matching.Pattern.IsFriendly = Friendly;
 
          _stopwatch = maybe(Verbose || Stopwatch, () => new Stopwatch());
          _stopwatch.IfThen(s => s.Start());
@@ -99,13 +104,13 @@ namespace FGrep
          {
             substitute();
          }
-         else if (Pattern.IsNotEmpty())
-         {
-            find();
-         }
          else if (Unfriendly)
          {
             unfriendly();
+         }
+         else if (Pattern.IsNotEmpty())
+         {
+            find();
          }
          else
          {
@@ -263,9 +268,7 @@ namespace FGrep
 
       protected void regexAction()
       {
-         Pattern.Must().Not.BeNullOrEmpty().OrThrow();
-         Matcher matcher = Pattern;
-         WriteLine(matcher.Pattern);
+         WriteLine(pattern.Regex);
       }
 
       public bool Find { get; set; }
@@ -490,14 +493,13 @@ namespace FGrep
          }
       }
 
-      protected static IMaybe<string> substitute(string line, string pattern, string replacement)
+      protected static IMaybe<string> substitute(string line, Pattern pattern, string replacement)
       {
          return maybe(line.IsMatch(pattern), () => line.Substitute(pattern, replacement));
       }
 
       protected void substitute()
       {
-         var pattern = Pattern;
          var replacement = Replacement;
 
          while (true)
@@ -516,15 +518,10 @@ namespace FGrep
 
       protected void unfriendly()
       {
-         Matcher matcher = Pattern;
-         if (matcher.Matches(Input).If(out var result, out var _exception))
+         if (Input.Matches(pattern).If(out var result))
          {
             WriteLine($"Result : {result.ToString().Guillemetify()}");
-            WriteLine($"Pattern: {matcher.Pattern}");
-         }
-         else if (_exception.If(out var exception))
-         {
-            WriteLine($"Exception: {exception.Message}");
+            WriteLine($"Pattern: {pattern.Regex}");
          }
          else
          {

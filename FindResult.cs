@@ -1,7 +1,7 @@
 ﻿using System.Collections.Generic;
 using Core.Computers;
 using Core.Monads;
-using Core.RegexMatching;
+using Core.Matching;
 using Core.Strings;
 using static Core.Monads.MonadFunctions;
 
